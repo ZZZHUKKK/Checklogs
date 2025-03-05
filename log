@@ -1,0 +1,54 @@
+#!/bin/bash
+
+search_logs() {
+    local dir="$1"
+    for file in $(find "$dir" -type f -name "*.log" 2>/dev/null); do
+
+        last_mod_date=$(date -r "$file" +%s)
+        diff_date=$(( current_date - last_mod_date ))
+
+        if (( diff_date > 2592000 )); then 
+            > "$file"
+            logs "File $file has been cleared"
+        elif (( diff_date < 604800 )); then
+            mv "$file" "$folder" 2>> log_log.log
+            logs "File $file has been moved to backup"
+        fi
+    done
+}
+
+logs() {
+    [[ -e log_log.log ]] || { touch log_log.log 2>/dev/null; echo "$(date) || File log_log.log has been created" >> log_log.log; exit; }
+    local data=$(date)
+    local text="$1"
+    local full_log="||  $text   ||  $data   ||"
+    echo "$full_log" >> log_log.log
+    
+    if command -v msmtp >/dev/null 2>&1; then
+        echo -e "$text" | msmtp example@example.ru 2>> log_log.log
+    else
+        logs "Error: msmtp is not installed"
+    fi
+}
+
+## Проверка входящих аргументов
+ls "$1" &>/dev/null || { logs "Error: Directory $1 does not exist"; exit; }
+[[ -n $(find "$1" -type f -name "*.log" 2>/dev/null) ]] || { logs "Error: No log files found in directory $1"; exit; }
+ls "$2" &>/dev/null || { logs "Error: Directory $2 does not exist"; exit; }
+
+logs_dir="$1"
+back_up_dir="$2"
+
+current_date=$(date +%s)
+date=$(date +%Y_%m_%d_%S)
+folder="${back_up_dir}/${date}_backup"
+mkdir "$folder" 2>> log_log.log
+logs "Backup directory $folder has been created"
+
+search_logs "$logs_dir"
+
+tar -czf "$date.tar.gz" "$folder" 2>> log_log.log
+logs "File $date.tar.gz has been created"
+
+rm -rf "$folder" 2>> log_log.log
+logs "Dir $folder has been removed"
